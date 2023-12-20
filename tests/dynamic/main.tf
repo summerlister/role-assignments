@@ -68,7 +68,7 @@ locals {
 ###################################################
 
 module "role_assignment" {
-  source               = "../../"
+  source               = "git::https://github.com/summerlister/role-assignments.git?ref=v1.0.0"
   role_definition_name = "User Access Administrator"
   subscription_id      = data.azurerm_subscription.primary.id
   principal_id         = data.azurerm_client_config.client.object_id
