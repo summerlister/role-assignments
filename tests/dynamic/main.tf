@@ -22,15 +22,7 @@ provider "azurerm" {
 # Resources
 ###################################################
 
-data "azurerm_subscription" "primary" {
-}
-
 data "azurerm_client_config" "client" {
-}
-
-data "azurerm_role_definition" "dynamic" {
-  for_each = local.role_definitions
-  name     = each.value.name
 }
 
 
@@ -39,27 +31,54 @@ data "azurerm_role_definition" "dynamic" {
 ###################################################
 
 locals {
-  role_definitions = {
-    AcrDelete = {
-      name = "AcrDelete"
+  scope = {
+    "/subscriptions/sub_id" = { #connectivity subscription
+      role_assignment = {
+      }
+      pim_eligible_role_assignment = {
+        principal_id = "object_id" #user/group/service principal object id
+        role_definitions = {
+          Reader = {
+            name = "Reader"
+          }
+          Contributor = {
+            name = "Contributor"
+          }
+          # add a new role here = {
+          #   name = "add a new role here"
+          # }
+        }
+      }
     }
-    AcrImageSigner = {
-      name = "AcrImageSigner"
+    "/subscriptions/sub_id" = { #core subscription
+      role_assignment = {
+        principal_id         = data.azurerm_client_config.client.object_id #user/group/service principal object id
+        role_definition_name = "User Access Administrator"
+        role_definitions = {
+          AcrDelete = {
+            name = "AcrDelete"
+          }
+          AcrImageSigner = {
+            name = "AcrImageSigner"
+          }
+          # AcrPull = {
+          #   name = "AcrPull"
+          # }
+          # add a new role here = {
+          #   name = "add a new role here"
+          # }
+        }
+      }
+      pim_eligible_role_assignment = {
+        # principal_id = "object_id" #user/group/service principal object id
+        # role_definitions = {
+        #   Contributor = {
+        #     name = "Contributor"
+        #   }
+        # }
+      }
     }
-    AcrPull = {
-      name = "AcrPull"
-    }
-    AcrPush = {
-      name = "AcrPush"
-    }
-    # add a new role here = {
-    #   name = "add a new role here"
-    # }
   }
-}
-
-locals {
-  role_definition_ids = join(", ", [for role_definition in data.azurerm_role_definition.dynamic : "${substr(role_definition.id, 51, 36)}"])
 }
 
 
@@ -68,9 +87,15 @@ locals {
 ###################################################
 
 module "role_assignment" {
-  source               = "git::https://github.com/summerlister/role-assignments.git?ref=v1.0.0"
-  role_definition_name = "User Access Administrator"
-  subscription_id      = data.azurerm_subscription.primary.id
-  principal_id         = data.azurerm_client_config.client.object_id
-  condition            = "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${local.role_definition_ids}})) AND ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${local.role_definition_ids}}))"
+  for_each                         = local.scope
+  source                           = "../.."
+  role_assignment                  = each.value.role_assignment
+  role_assign_scope                = each.key
+  role_assign_role_definition_name = each.value.role_assignment != {} ? each.value.role_assignment.role_definition_name : null
+  role_assign_role_definition      = each.value.role_assignment != {} ? each.value.role_assignment.role_definitions : {}
+  role_assign_principal_id         = each.value.role_assignment != {} ? each.value.role_assignment.principal_id : null
+  pim_eligible_role_assignment     = each.value.pim_eligible_role_assignment
+  pim_scope                        = each.key
+  pim_role_definition              = each.value.pim_eligible_role_assignment != {} ? each.value.pim_eligible_role_assignment.role_definitions : {}
+  pim_principal_id                 = each.value.pim_eligible_role_assignment != {} ? each.value.pim_eligible_role_assignment.principal_id : null
 }
